@@ -207,7 +207,8 @@
 
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null, master = null;
-  var voices = {};            // hz -> {osc, gain}
+  var voices = {};            // hz -> {src, gain}
+  var buffers = {};           // hz -> AudioBuffer（1周期ぶんを継ぎ目なくループ）
   var wakeLock = null;
   var VOLKEY = "solfeggio.vol";
 
@@ -227,12 +228,27 @@
   function ensureCtx(){
     if(!AC) return;
     if(!ctx){
-      ctx = new AC();
+      // latencyHint:"playback" ＝ バッファを大きめに要求。Android Chrome のプツプツ対策
+      try{ ctx = new AC({latencyHint:"playback"}); }
+      catch(e){ ctx = new AC(); }
       master = ctx.createGain();
       master.gain.value = vol * 0.8;
       master.connect(ctx.destination);   // コンプレッサーは外した（ポツポツ音の原因になりやすい）
     }
     if(ctx.state === "suspended") ctx.resume();
+  }
+
+  // 整数Hzなら「サンプルレート個ぶん＝ちょうど整数周期」なので継ぎ目なくループできる
+  function toneBuffer(hz){
+    if(buffers[hz]) return buffers[hz];
+    var sr = ctx.sampleRate;
+    var len = Math.round(sr);
+    var buf = ctx.createBuffer(1, len, sr);
+    var d = buf.getChannelData(0);
+    var w = 2 * Math.PI * hz / sr;
+    for(var i = 0; i < len; i++) d[i] = Math.sin(w * i);
+    buffers[hz] = buf;
+    return buf;
   }
 
   function count(){ return Object.keys(voices).length; }
@@ -262,15 +278,15 @@
     ensureCtx();
     if(!ctx || voices[hz]) return;
     var t = ctx.currentTime + 0.03;
-    var osc = ctx.createOscillator();
+    var src = ctx.createBufferSource();
+    src.buffer = toneBuffer(hz);
+    src.loop = true;
     var g = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(hz, t);
     g.gain.value = 0;                       // ちょうど0から始める＝開始クリックなし
-    osc.connect(g);
+    src.connect(g);
     g.connect(master);
-    osc.start(t);
-    voices[hz] = {osc:osc, gain:g};
+    src.start(t);
+    voices[hz] = {src:src, gain:g};
     rebalance();
     requestWake();
     updateUI();
@@ -284,9 +300,9 @@
     p.cancelScheduledValues(now);
     p.setValueAtTime(p.value, now);
     p.linearRampToValueAtTime(0, now + rel);   // ちょうど0まで下げ切る
-    try{ vc.osc.stop(now + rel + 0.05); }catch(e){}
+    try{ vc.src.stop(now + rel + 0.05); }catch(e){}
     var dead = vc;
-    setTimeout(function(){ try{ dead.osc.disconnect(); dead.gain.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
+    setTimeout(function(){ try{ dead.src.disconnect(); dead.gain.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
     delete voices[hz];
     rebalance();
     if(count() === 0) releaseWake();
