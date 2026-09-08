@@ -229,44 +229,47 @@
     if(!ctx){
       ctx = new AC();
       master = ctx.createGain();
-      var comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -10;
-      comp.knee.value = 6;
-      comp.ratio.value = 6;
-      comp.attack.value = 0.005;
-      comp.release.value = 0.25;
-      master.connect(comp);
-      comp.connect(ctx.destination);
       master.gain.value = vol * 0.8;
+      master.connect(ctx.destination);   // コンプレッサーは外した（ポツポツ音の原因になりやすい）
     }
     if(ctx.state === "suspended") ctx.resume();
   }
 
   function count(){ return Object.keys(voices).length; }
 
+  // 全ての正弦波が最悪同位相で重なっても歪まないよう、声部数で線形に按分
   function perVoiceGain(){
     var n = count() || 1;
-    return 0.9 / Math.sqrt(n + 1);
+    return 1.0 / (n + 0.7);
+  }
+  // 現在値から目標値へ、音の途切れが出ない直線フェード
+  function fadeTo(param, target, dur){
+    var now = ctx.currentTime;
+    var cur = param.value;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(cur, now);
+    param.linearRampToValueAtTime(target, now + dur);
   }
   function rebalance(){
     if(!ctx) return;
     var g = perVoiceGain();
     Object.keys(voices).forEach(function(hz){
-      voices[hz].gain.gain.setTargetAtTime(g, ctx.currentTime, 0.06);
+      fadeTo(voices[hz].gain.gain, g, 0.20);
     });
   }
 
   function startTone(hz){
     ensureCtx();
     if(!ctx || voices[hz]) return;
+    var t = ctx.currentTime + 0.03;
     var osc = ctx.createOscillator();
     var g = ctx.createGain();
     osc.type = "sine";
-    osc.frequency.value = hz;
-    g.gain.value = 0.0001;
+    osc.frequency.setValueAtTime(hz, t);
+    g.gain.value = 0;                       // ちょうど0から始める＝開始クリックなし
     osc.connect(g);
     g.connect(master);
-    osc.start();
+    osc.start(t);
     voices[hz] = {osc:osc, gain:g};
     rebalance();
     requestWake();
@@ -275,14 +278,15 @@
   }
   function stopTone(hz){
     var vc = voices[hz];
-    if(!vc || !ctx) { delete voices[hz]; updateUI(); return; }
-    var t = ctx.currentTime;
-    try{
-      vc.gain.gain.cancelScheduledValues(t);
-      vc.gain.gain.setTargetAtTime(0.0001, t, 0.05);
-    }catch(e){}
-    var osc = vc.osc;
-    setTimeout(function(){ try{ osc.stop(); osc.disconnect(); }catch(e){} }, 260);
+    if(!vc || !ctx){ delete voices[hz]; updateUI(); return; }
+    var now = ctx.currentTime, rel = 0.22;
+    var p = vc.gain.gain;
+    p.cancelScheduledValues(now);
+    p.setValueAtTime(p.value, now);
+    p.linearRampToValueAtTime(0, now + rel);   // ちょうど0まで下げ切る
+    try{ vc.osc.stop(now + rel + 0.05); }catch(e){}
+    var dead = vc;
+    setTimeout(function(){ try{ dead.osc.disconnect(); dead.gain.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
     delete voices[hz];
     rebalance();
     if(count() === 0) releaseWake();
@@ -300,7 +304,7 @@
   function setVol(v){
     vol = v;
     try{ localStorage.setItem(VOLKEY, String(v)); }catch(e){}
-    if(master && ctx) master.gain.setTargetAtTime(vol * 0.8, ctx.currentTime, 0.03);
+    if(master && ctx) fadeTo(master.gain, vol * 0.8, 0.08);
   }
 
   /* ---- wake lock ---- */
