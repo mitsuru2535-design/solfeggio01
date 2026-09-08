@@ -25,6 +25,7 @@
     --panel:#fbf9f4;
     --ink:#26221c;
     --muted:#7c7264;
+    --sub:#d0702f;
     --line:rgba(38,34,28,.14);
     --radius:16px;
   }
@@ -34,6 +35,7 @@
       --panel:#1b1917;
       --ink:#ece5d8;
       --muted:#8b8175;
+      --sub:#e8894a;
       --line:rgba(236,229,216,.15);
     }
   }
@@ -42,6 +44,7 @@
     --panel:#1b1917;
     --ink:#ece5d8;
     --muted:#8b8175;
+    --sub:#e8894a;
     --line:rgba(236,229,216,.15);
   }
 
@@ -66,9 +69,10 @@
     font-family:"Fraunces",Georgia,serif;
     font-weight:500;
     font-size:clamp(27px,7.5vw,33px);
-    letter-spacing:.01em;
+    letter-spacing:.02em;
   }
-  .sub{font-size:14px;color:var(--muted);line-height:1.65;max-width:32ch}
+  h1 span{transition:color .25s}
+  .sub{font-size:14px;color:var(--sub);font-weight:500;line-height:1.65;max-width:32ch}
 
   .vol{
     display:flex;align-items:center;gap:12px;width:100%;
@@ -107,6 +111,7 @@
     font-family:"Fraunces",Georgia,serif;
     font-size:clamp(23px,6.6vw,29px);
     font-weight:500;line-height:1;
+    color:var(--hue);
     transition:color .25s;
   }
   .hz .unit{font-size:.5em;margin-left:2px;color:var(--muted)}
@@ -121,8 +126,6 @@
     box-shadow:0 0 0 1px var(--hue), 0 8px 30px -8px var(--hue);
   }
   .pad[aria-pressed="true"]::before{opacity:.13}
-  .pad[aria-pressed="true"] .hz{color:var(--hue)}
-  .pad[aria-pressed="true"] .hz .unit{color:var(--hue)}
   .pad[aria-pressed="true"] .ind{
     background:var(--hue);
     animation:breathe 2.6s ease-in-out infinite;
@@ -144,7 +147,7 @@
     border:1.5px solid var(--line);
     background:transparent;color:var(--muted);
     border-radius:var(--radius);
-    padding:15px;font-family:inherit;font-weight:700;font-size:15px;
+    padding:18px;font-family:inherit;font-weight:700;font-size:18px;
     width:100%;cursor:pointer;touch-action:manipulation;
     transition:opacity .2s, border-color .2s, color .2s;
   }
@@ -340,6 +343,20 @@
   }
 
   /* ---- UI ---- */
+
+  // タイトルを1文字ずつ、各周波数の色で塗り分ける
+  (function colorTitle(){
+    var h1 = document.querySelector("h1");
+    var text = h1.textContent;
+    h1.textContent = "";
+    for(var i = 0; i < text.length; i++){
+      var s = document.createElement("span");
+      s.textContent = text[i];
+      s.style.color = FREQS[i % FREQS.length].hue;
+      h1.appendChild(s);
+    }
+  })();
+
   var pads = [];
   FREQS.forEach(function(f){
     var b = document.createElement("button");
